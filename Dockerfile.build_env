@@ -1,0 +1,15 @@
+# Dockerfile.build_env
+# Custom build image for R740xd AVX-512 optimisations
+FROM debian:bookworm-slim
+
+# Pre-install all build dependencies once
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    cmake \
+    git \
+    libcurl4-openssl-dev \
+    libpcre3-dev \
+    && rm -rf /var/lib/apt/lists/* # Clean up to keep the image slim
+
+# This image doesn't need to run anything; it's just a toolset.
+CMD ["/bin/bash"]

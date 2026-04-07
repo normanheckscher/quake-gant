@@ -1,0 +1,23 @@
+ARG BASE_IMAGE="normanjames/quake-gant-base:latest"
+FROM ${BASE_IMAGE}
+
+ARG TARGET_DIR=build-standard
+
+# Copy compiled MVDSV Engine and KTX Mod (Dynamically selected architecture via ARG)
+COPY ${TARGET_DIR}/mvdsv /quake/mvdsv
+COPY ${TARGET_DIR}/qw /quake/qw
+
+RUN chmod +x /quake/mvdsv
+
+# Web C2
+COPY web /web
+
+# Supervisor Config
+COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+
+# Sever Port (UDP) and Web Port (TCP)
+EXPOSE 27500-27510/udp 8000/tcp
+
+WORKDIR /quake
+
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
