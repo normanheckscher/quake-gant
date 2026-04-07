@@ -174,7 +174,7 @@ publish-to-github:
     - 'git config --global user.email "orchestrator@antigravity.local" && git config --global user.name "Quake-GANT Orchestrator"'
     - 'echo "Establishing isolated synchronization bridge to Github..."'
     - 'git clone "https://${GITHUB_USERNAME}:${GITHUB_TOKEN}@github.com/${GITHUB_USERNAME}/${GITHUB_REPO}.git" /tmp/release-bridge'
-    - 'rsync -av --exclude=".git" --exclude="/tmp" --exclude="build-*" --delete --delete-excluded ./ /tmp/release-bridge/'
+    - 'rsync -av --exclude=".git" --exclude="/tmp" --exclude="build-*" --delete ./ /tmp/release-bridge/'
     - 'cd /tmp/release-bridge'
     - 'git add -A && git commit -m "Production Release: Quake-GANT v1.0.${CI_PIPELINE_IID}" || true'
     - 'echo "Linearly stacking new baseline seamlessly across Githubs timeline..."'
