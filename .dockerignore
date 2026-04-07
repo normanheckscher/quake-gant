@@ -1,0 +1,6 @@
+.git/
+source/
+build/
+!build/mvdsv
+!build/qw/
+!build/qwprogs.so

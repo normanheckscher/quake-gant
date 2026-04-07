@@ -1,0 +1,12 @@
+[submodule "mvdsv"]
+	path = mvdsv
+	url = https://github.com/QW-Group/mvdsv.git
+	branch = master
+[submodule "ezquake"]
+	path = ezquake
+	url = https://github.com/ezQuake/ezquake-source.git
+	branch = master
+[submodule "ktx"]
+	path = ktx
+	url = https://github.com/QW-Group/ktx.git
+	branch = master

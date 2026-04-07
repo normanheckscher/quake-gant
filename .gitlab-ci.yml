@@ -1,0 +1,191 @@
+stages:
+  - audit
+  - build
+  - deploy
+  - publish
+
+audit-architecture:
+  stage: audit
+  image: python:3.11-alpine
+  tags: [avx512]
+  script:
+    - echo "Executing Quake-GANT Architectural Sentinel..."
+    - python3 scripts/sentinel.py
+
+compile-quake:
+  stage: build
+  variables:
+    GIT_SUBMODULE_STRATEGY: none
+  image: ${BUILDER_REGISTRY}/norman/quake-antigravity/quake-builder:latest
+  tags: [avx512]
+  parallel:
+    matrix:
+      - BUILD_TARGET: "standard"
+        ARCH_FLAGS: "-O3"
+      - BUILD_TARGET: "avx512"
+        ARCH_FLAGS: "-march=skylake-avx512 -O3 -mstackrealign"
+  cache:
+    key: "quake-${BUILD_TARGET}-build"
+    paths:
+      - build-${BUILD_TARGET}/
+  script:
+    - echo "Automagically syncing submodules to their bleeding-edge tracking branches..."
+    - git config --global safe.directory '*' || true
+    - 'if [ "$CI_PIPELINE_SOURCE" = "schedule" ]; then git submodule update --init --recursive --remote --merge mvdsv ktx; else git submodule update --init --recursive mvdsv ktx; fi'
+    
+    - echo "Building MVDSV Native Engine via Out-of-Source Cached Architecture..."
+    - mkdir -p build-${BUILD_TARGET}/mvdsv-build && cd build-${BUILD_TARGET}/mvdsv-build
+    - 'cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_FLAGS="${ARCH_FLAGS} -fno-strict-aliasing -Wno-format-truncation -Wno-deprecated-declarations -Wno-pointer-sign -Wno-unused-variable -Wno-unused-but-set-variable -Wno-address" ../../mvdsv'
+    - make -j$(nproc)
+    - cp mvdsv ../mvdsv
+    
+    - echo "Compiling internally-sovereign KTX Machine for ${BUILD_TARGET}..."
+    - cd ../..
+    - mkdir -p build-${BUILD_TARGET}/ktx-build && cd build-${BUILD_TARGET}/ktx-build
+    - cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_FLAGS="${ARCH_FLAGS} -fno-strict-aliasing" ../../ktx
+    - make -j$(nproc)
+    
+    - echo "Packaging final Unified Quake Build parameters..."
+    - cd ../..
+    - cp build-${BUILD_TARGET}/ktx-build/qwprogs.so qw/
+    - cp -r ktx/help ktx/locs ktx/choke ktx/resources/example-configs/ktx/bots qw/ || true
+    - find qw/ -name "*.cfg" -exec sed -i 's/\r$//' {} +
+    - cp -r qw build-${BUILD_TARGET}/
+  artifacts:
+    paths:
+      - build-${BUILD_TARGET}/
+
+deploy-to-remote:
+  stage: deploy
+  needs: ["compile-quake"]
+  image: alpine:latest
+  tags: [avx512]
+  before_script:
+    - |
+      if [ -z "$DEPLOY_HOST" ] || [ -z "$DEPLOY_USER" ] || [ -z "$SSH_PRIVATE_KEY" ]; then
+        echo -e "\e[31m[ERROR] Missing Deployment Variables!\e[0m"
+        echo -e "\e[33mTo enable automated deployment, please configure the following variables in your project settings:\e[0m"
+        echo -e "Navigate to: \e[1mSettings > CI/CD > Variables\e[0m"
+        echo -e "1. \e[36mDEPLOY_HOST\e[0m: The IPv4 or Hostname of your remote deployment server."
+        echo -e "2. \e[36mDEPLOY_USER\e[0m: The SSH authorized linux user on the host."
+        echo -e "3. \e[36mDEPLOY_PATH\e[0m: The absolute host directory path for the build."
+        echo -e "4. \e[36mSSH_PRIVATE_KEY\e[0m: Your ED25519 or RSA Private Key data."
+        echo -e "Pipeline halted gracefully to prevent unconfigured blind SSH execution."
+        exit 1
+      fi
+    - apk add --no-cache openssh-client
+    - mkdir -p ~/.ssh
+    - cp "$SSH_PRIVATE_KEY" ~/.ssh/id_ed25519
+    - chmod 600 ~/.ssh/id_ed25519
+    - sed -i '$a\' ~/.ssh/id_ed25519
+    - ssh-keyscan -H $DEPLOY_HOST >> ~/.ssh/known_hosts
+  script:
+    - echo "Packaging unified AVX512 payload for zero-latency SCP..."
+    - tar -czf payload.tar.gz build-avx512/mvdsv build-avx512/qw/ web/ docker/supervisord.conf Dockerfile.hub
+    - ssh ${DEPLOY_USER}@${DEPLOY_HOST} "mkdir -p ${DEPLOY_PATH}/build"
+    - scp payload.tar.gz ${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PATH}/build/
+    - echo "Building and deploying Dev Server instantly via host daemon..."
+    - >-
+      ssh ${DEPLOY_USER}@${DEPLOY_HOST} "cd ${DEPLOY_PATH}/build
+      && tar -xzf payload.tar.gz
+      && echo \"${CI_REGISTRY_PASSWORD}\" | docker login ${BUILDER_REGISTRY} -u \"${CI_REGISTRY_USER}\" --password-stdin
+      && docker build --no-cache --build-arg TARGET_DIR=build-avx512 --build-arg BASE_IMAGE=${BUILDER_REGISTRY}/norman/quake-antigravity/quake-gant-base:latest -t quake-server:local -f Dockerfile.hub .
+      && mkdir -p ${DEPLOY_PATH}/db ${DEPLOY_PATH}/qw/maps
+      && (docker stop quake-server || true)
+      && (docker rm quake-server || true)
+      && docker run -d --name quake-server
+      -p 27500-27510:27500-27510/udp -p 8500:8000/tcp
+      -e ADMIN_PASSWORD="${ADMIN_PASSWORD:-changeme}"
+      -v ${DEPLOY_PATH}/id1:/quake/id1:ro
+      -v ${DEPLOY_PATH}/qw/maps:/quake/qw/maps
+      -v ${DEPLOY_PATH}/db:/db
+      -e DB_PATH=/db/leaderboard.db
+      quake-server:local
+      && docker system prune -f"
+
+publish-runtime-asset:
+  stage: build
+  needs: []
+  image: docker:24.0.5
+  tags: [avx512]
+  services:
+    - name: docker:24.0.5-dind
+      alias: docker
+      command: ["--insecure-registry", "10.0.0.61:5050"]
+  when: manual
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
+  script:
+    - 'echo "Authenticating with Internal GitLab Repository..."'
+    - 'echo "$CI_REGISTRY_PASSWORD" | docker login $BUILDER_REGISTRY -u "$CI_REGISTRY_USER" --password-stdin'
+    - 'echo "Building Sovereign Base Dependency Runtime..."'
+    - 'docker build --no-cache -t ${BUILDER_REGISTRY}/norman/quake-antigravity/quake-gant-base:latest -f Dockerfile.runtime_env .'
+    - 'echo "Pushing runtime lock to GitLab Registry..."'
+    - 'docker push ${BUILDER_REGISTRY}/norman/quake-antigravity/quake-gant-base:latest'
+    - 'echo "Successfully mapped dependency cache downstream!"'
+
+publish-to-dockerhub:
+  stage: publish
+  needs: ["compile-quake"]
+  image: docker:24.0.5
+  tags: [avx512]
+  services:
+    - name: docker:24.0.5-dind
+      alias: docker
+      command: ["--insecure-registry", "10.0.0.61:5050"]
+  when: manual
+  parallel:
+    matrix:
+      - BUILD_TARGET: "standard"
+        DOCKER_TAG: "latest"
+      - BUILD_TARGET: "avx512"
+        DOCKER_TAG: "avx512-latest"
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
+  script:
+    - 'echo "Authenticating with Internal GitLab Repository for base caching..."'
+    - 'echo "$CI_REGISTRY_PASSWORD" | docker login $BUILDER_REGISTRY -u "$CI_REGISTRY_USER" --password-stdin'
+    - 'echo "Logging into DockerHub public arrays: ${DOCKERHUB_USERNAME} ($BUILD_TARGET)"'
+    - 'echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin'
+    - 'echo "Building Production Unified Image..."'
+    - 'docker build --no-cache --build-arg TARGET_DIR=build-${BUILD_TARGET} --build-arg BASE_IMAGE=${BUILDER_REGISTRY}/norman/quake-antigravity/quake-gant-base:latest -t ${DOCKERHUB_USERNAME}/quake-gant:${DOCKER_TAG} -f Dockerfile.hub .'
+    - 'docker tag ${DOCKERHUB_USERNAME}/quake-gant:${DOCKER_TAG} ${DOCKERHUB_USERNAME}/quake-gant:v1.0.${CI_PIPELINE_IID}-${BUILD_TARGET}'
+    - 'echo "Pushing release to DockerHub..."'
+    - 'docker push ${DOCKERHUB_USERNAME}/quake-gant:${DOCKER_TAG}'
+    - 'docker push ${DOCKERHUB_USERNAME}/quake-gant:v1.0.${CI_PIPELINE_IID}-${BUILD_TARGET}'
+    - 'echo "Successfully published unified image!"'
+    - 'echo "Syncing Repository Overview Documentation natively to Docker Hub..."'
+    - 'wget -q https://github.com/christian-korneck/docker-pushrm/releases/download/v1.9.0/docker-pushrm_linux_amd64 -O docker-pushrm'
+    - 'chmod +x docker-pushrm'
+    - 'DOCKER_USER=$DOCKERHUB_USERNAME DOCKER_PASS=$DOCKERHUB_TOKEN ./docker-pushrm --file DOCKERHUB.md --provider dockerhub ${DOCKERHUB_USERNAME}/quake-gant || true'
+
+publish-to-github:
+  stage: publish
+  needs: ["compile-quake"]
+  image: alpine:latest
+  tags: [avx512]
+  when: manual
+  before_script:
+    - apk add --no-cache curl jq git rsync
+  script:
+    - 'echo "Sanitizing timeline and configuring GitHub pipeline proxy..."'
+    - 'git config --global user.email "orchestrator@antigravity.local" && git config --global user.name "Quake-GANT Orchestrator"'
+    - 'echo "Establishing isolated synchronization bridge to Github..."'
+    - 'git clone "https://${GITHUB_USERNAME}:${GITHUB_TOKEN}@github.com/${GITHUB_USERNAME}/${GITHUB_REPO}.git" /tmp/release-bridge'
+    - 'rsync -av --exclude=".git" --exclude="/tmp" --exclude="build-*" --delete --delete-excluded ./ /tmp/release-bridge/'
+    - 'cd /tmp/release-bridge'
+    - 'git add -A && git commit -m "Production Release: Quake-GANT v1.0.${CI_PIPELINE_IID}" || true'
+    - 'echo "Linearly stacking new baseline seamlessly across Githubs timeline..."'
+    - 'git push origin main'
+    - 'cd -'
+    - 'echo "Creating GitHub API Binding v1.0.${CI_PIPELINE_IID}..."'
+    - 'RELEASE_DATA=$(curl -sL -X POST -H "Accept: application/vnd.github+json" -H "Authorization: Bearer $GITHUB_TOKEN" -H "X-GitHub-Api-Version: 2022-11-28" https://api.github.com/repos/${GITHUB_USERNAME}/${GITHUB_REPO}/releases -d "{\"tag_name\":\"v1.0.${CI_PIPELINE_IID}\",\"target_commitish\":\"main\",\"name\":\"Quake-GANT v1.0.${CI_PIPELINE_IID}\",\"body\":\"Automated Production Release from GitLab Pipeline.\",\"draft\":false,\"prerelease\":false,\"generate_release_notes\":false}")'
+    - 'RELEASE_ID=$(echo $RELEASE_DATA | jq -r .id)'
+    - 'echo "Uploading MVDSV Standard Asset..."'
+    - 'curl -sL -X POST -H "Accept: application/vnd.github+json" -H "Authorization: Bearer $GITHUB_TOKEN" -H "X-GitHub-Api-Version: 2022-11-28" -H "Content-Type: application/octet-stream" --data-binary @build-standard/mvdsv "https://uploads.github.com/repos/${GITHUB_USERNAME}/${GITHUB_REPO}/releases/${RELEASE_ID}/assets?name=mvdsv-standard"'
+    - 'echo "Uploading MVDSV AVX512 Asset..."'
+    - 'curl -sL -X POST -H "Accept: application/vnd.github+json" -H "Authorization: Bearer $GITHUB_TOKEN" -H "X-GitHub-Api-Version: 2022-11-28" -H "Content-Type: application/octet-stream" --data-binary @build-avx512/mvdsv "https://uploads.github.com/repos/${GITHUB_USERNAME}/${GITHUB_REPO}/releases/${RELEASE_ID}/assets?name=mvdsv-avx512"'
+    - 'echo "Uploading KTX Mod Binaries Asset..."'
+    - 'curl -sL -X POST -H "Accept: application/vnd.github+json" -H "Authorization: Bearer $GITHUB_TOKEN" -H "X-GitHub-Api-Version: 2022-11-28" -H "Content-Type: application/octet-stream" --data-binary @build-avx512/qwprogs.so "https://uploads.github.com/repos/${GITHUB_USERNAME}/${GITHUB_REPO}/releases/${RELEASE_ID}/assets?name=qwprogs.so"'

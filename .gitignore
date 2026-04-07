@@ -1,0 +1,22 @@
+# Dependencies and Environments
+.env
+__pycache__/
+*.pyc
+
+# Build outputs
+build/
+build-*/
+*.so
+*.o
+*.qvm
+payload.tar.gz
+
+# IDEs
+.idea/
+.vscode/
+
+# Local data
+id1/
+qw/maps/
+qw/bots/maps/
+db/

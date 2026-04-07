@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quake-GANT Orchestrator</title>
+    <link rel="stylesheet" href="/static/index.css">
+</head>
+<body>
+
+    <header>
+        <h1>Quake-GANT</h1>
+        <div class="version-tag">Engine: {{ server.engine | default('MVDSV AVX-512') }} // Status: ONLINE</div>
+    </header>
+
+    <main>
+        <div class="tabs">
+            <button class="tab-btn active" onclick="switchTab('servers')">Live Servers</button>
+            <button class="tab-btn" onclick="switchTab('leaderboard')">Leaderboard</button>
+            <button class="tab-btn" onclick="switchTab('admin')">C2 Console</button>
+        </div>
+
+        <div class="content-box">
+            
+            <!-- LIVE SERVERS TAB -->
+            <div id="tab-servers" class="tab-content active">
+                <h2>Active Deployments</h2>
+                <p>Monitoring dynamic multi-server orchestrations across the host container.</p>
+                
+                <table class="q-table">
+                    <thead>
+                        <tr>
+                            <th>Port</th>
+                            <th>Mod</th>
+                            <th>Map</th>
+                            <th>Capacity</th>
+                            <th>Internal Menu Rules</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="servers-table-body">
+                        <!-- Default Supervised Server -->
+                        <tr>
+                            <td>[UDP] 27500</td>
+                            <td>KTX</td>
+                            <td>dm3</td>
+                            <td>0 / 16</td>
+                            <td><div style="font-size: 0.8rem; color: #a1a1aa;">TL: 0 | FL: 0</div></td>
+                            <td><button class="q-btn q-btn-secondary" style="font-size: 0.9rem; padding: 0.4rem 1rem;">Connect</button></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+
+            <!-- LEADERBOARD TAB -->
+            <div id="tab-leaderboard" class="tab-content">
+                <h2>Global Rankings</h2>
+                <p>Tracking unified frag metrics and match victories parsed from active servers.</p>
+                
+                <div class="tabs" style="justify-content: flex-start; margin-bottom: 1rem; border-bottom: none; gap: 0.5rem;">
+                    <button class="tab-btn lb-btn active" style="font-size: 0.8rem; padding: 0.5rem 1rem;" onclick="setLeaderboardFilter('all_time', event)">All Time</button>
+                    <button class="tab-btn lb-btn" style="font-size: 0.8rem; padding: 0.5rem 1rem;" onclick="setLeaderboardFilter('year', event)">Year</button>
+                    <button class="tab-btn lb-btn" style="font-size: 0.8rem; padding: 0.5rem 1rem;" onclick="setLeaderboardFilter('month', event)">Month</button>
+                    <button class="tab-btn lb-btn" style="font-size: 0.8rem; padding: 0.5rem 1rem;" onclick="setLeaderboardFilter('week', event)">Week</button>
+                    <button class="tab-btn lb-btn" style="font-size: 0.8rem; padding: 0.5rem 1rem;" onclick="setLeaderboardFilter('day', event)">Day</button>
+                </div>
+                
+                <table class="q-table">
+                    <thead>
+                        <tr>
+                            <th>Rank</th>
+                            <th>In-Game Name</th>
+                            <th>Frags</th>
+                            <th>Deaths</th>
+                            <th>Wins</th>
+                            <th>Time In-Game</th>
+                            <th>Efficiency</th>
+                            <th>Matches</th>
+                        </tr>
+                    </thead>
+                    <tbody id="leaderboard-table-body">
+                        <tr>
+                            <td colspan="8" style="text-align: center; color: var(--q-gold);">Calculating Local Statistics...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- ADMIN TAB -->
+            <div id="tab-admin" class="tab-content">
+                <h2>C2 Orchestration Shell</h2>
+                
+                <div class="console-box" id="admin-console">
+                    > Antigravity C2 Core Initialized...<br>
+                    > Awaiting administrative mandates...<br>
+                </div>
+
+                <div class="form-group">
+                    <label>Direct Subprocess Injection (RCON stdin)</label>
+                    <div style="display: flex; gap: 1rem;">
+                        <input type="number" id="rcon-port" placeholder="Port (e.g. 27501)" style="width: 150px;">
+                        <input type="text" id="rcon-cmd" placeholder="e.g. status, addbot, map aerowalk" onkeypress="handleRconKey(event)">
+                        <button class="q-btn q-btn-secondary" onclick="sendRcon()">EXEC</button>
+                    </div>
+                </div>
+
+                <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.05); margin: 2rem 0;">
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem;">
+                    <div class="form-group">
+                        <label>Sub-Server Spawner</label>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <input type="text" id="admin-map" placeholder="Map" value="random">
+                            <button class="q-btn" onclick="spawnServer()" style="font-size: 0.9rem; padding: 0.5rem 1rem;">INIT</button>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Asset URI Fetcher (Zip payloads)</label>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <input type="text" id="admin-url" placeholder="https://quaddicted.com/">
+                            <button class="q-btn q-btn-secondary" onclick="fetchAsset()" style="font-size: 0.9rem; padding: 0.5rem 1rem;">FETCH</button>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+    </main>
+
+    <script>
+        let isEditing = false;
+        
+        document.addEventListener('focusin', (e) => {
+            if(e.target.tagName === 'INPUT') isEditing = true;
+        });
+        document.addEventListener('focusout', (e) => {
+            if(e.target.tagName === 'INPUT') isEditing = false;
+        });
+
+        document.addEventListener('DOMContentLoaded', () => {
+            fetchServers();
+            fetchLeaderboard();
+        });
+
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            event.target.classList.add('active');
+            document.getElementById('tab-' + tabId).classList.add('active');
+        }
+
+        function logConsole(msg) {
+            const cons = document.getElementById('admin-console');
+            cons.innerHTML += `> ${msg}<br>`;
+            cons.scrollTop = cons.scrollHeight;
+        }
+
+        function promptConnect(port) {
+            const host = window.location.hostname;
+            const cmd = `connect ${host}:${port}`;
+            navigator.clipboard.writeText(cmd).then(() => {
+                logConsole(`Copied to clipboard: ${cmd}`);
+                alert(`Copied "${cmd}" to clipboard! Switch to your ezQuake window and paste it directly into the console to join!`);
+            }).catch(err => {
+                prompt("Copy this command to your ezQuake console:", cmd);
+            });
+        }
+
+        async function fetchServers() {
+            if (isEditing) {
+                setTimeout(fetchServers, 5000);
+                return;
+            }
+            
+            try {
+                // Capture active DOM accordion states prior to rewrite to prevent collapsing
+                const expandedState = {};
+                document.querySelectorAll('[id^=roster-btn-]').forEach(btn => {
+                    const portId = btn.id.replace('roster-btn-', '');
+                    const firstRow = document.querySelector(`.roster-row-${portId}`);
+                    if (firstRow && firstRow.style.display !== 'none') {
+                        expandedState[portId] = true;
+                    }
+                });
+
+                const res = await fetch('/api/servers');
+                const data = await res.json();
+                let html = '';
+                for (const [port, sInfo] of Object.entries(data)) {
+                    let playersStr = sInfo.players;
+                    let curr = 0; let max = 16;
+                    if(playersStr.includes('/')) {
+                        let parts = playersStr.split('/');
+                        curr = parseInt(parts[0]); max = parseInt(parts[1]);
+                    }
+                    let pct = Math.min((curr / max) * 100, 100);
+                    let host = window.location.hostname;
+                    
+                    let rowDisplay = expandedState[port] ? 'table-row' : 'none';
+                    let controlHTML = `
+                        <tr class="roster-row-${port}" style="display: ${rowDisplay}; background: rgba(0,0,0,0.5);">
+                            <td colspan="6" style="padding: 1.5rem;">
+                                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+                                    <div class="form-group" style="margin-bottom: 0;">
+                                        <label style="font-size: 0.75rem;">Map Rotation Queue</label>
+                                        <input type="text" id="cfg-queue-${port}" value="${sInfo.queue || '2towers aerowalk amphi2 anarena anarena10 anarena2 anarena3 anarena4 anarena5 anarena6 anarena7 anarena8 anarena9 anwalked_test arenazap aztek bravado catalyst cmt1b cmt3 cmt4 defer dm2dmm4 dm3 dm3hill dm4 dm6 dmm4_1 dmm4_3 e1m2 endif forsaken frobodm2 katt marena2 marena3 metron monsoon nacmidair noentry obsidian oldcrat outpost phantombase pkeg1 pocket povdmm4 povdmm4b ptucket pushdmm4 q1q3monsoon#td qobblestone qube rarena3 ravageqwb8 rocka sabbath schloss shifter skull spinev2 steam stroggopolis stronghold subterfuge ukooldm2 ukooldm3 ukooldm6 ukooldm8 ukpak2 ultrav ztndm1 ztndm2 ztndm3 ztndm4 ztndm5 ztndm6'}" style="padding: 0.4rem; font-size: 0.8rem;">
+                                    </div>
+                                    <div class="form-group" style="margin-bottom: 0;">
+                                        <label style="font-size: 0.75rem;">Frag Limit / Time Limit</label>
+                                        <div style="display: flex; gap: 0.5rem;">
+                                            <input type="number" id="cfg-frag-${port}" value="${sInfo.fraglimit || 8}" style="padding: 0.4rem; font-size: 0.8rem; width: 100%;">
+                                            <input type="number" id="cfg-time-${port}" value="${sInfo.timelimit || 3}" style="padding: 0.4rem; font-size: 0.8rem; width: 100%;">
+                                        </div>
+                                    </div>
+                                    <div class="form-group" style="margin-bottom: 0;">
+                                        <label style="font-size: 0.75rem;">Bot Min Target / Base Skill</label>
+                                        <div style="display: flex; gap: 0.5rem;">
+                                            <input type="number" id="cfg-minp-${port}" value="4" style="padding: 0.4rem; font-size: 0.8rem; width: 100%;">
+                                            <input type="number" id="cfg-skill-${port}" value="${sInfo.bot_skill1 || 10}" style="padding: 0.4rem; font-size: 0.8rem; width: 100%;">
+                                        </div>
+                                    </div>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <div id="cfg-status-${port}" style="color: var(--q-terminal-green); font-size: 0.85rem;"></div>
+                                    <div>
+                                        <button class="q-btn" onclick="applyLocalConfig(${port})" style="font-size: 0.85rem; padding: 0.4rem 1.0rem;">Apply Port Matrix</button>
+                                        <button class="q-btn" onclick="nextMap(${port})" style="font-size: 0.85rem; padding: 0.4rem 1.0rem; background: rgba(50,150,200,0.15); margin-left: 0.5rem; border: 1px solid rgba(50,150,200,0.4);">Change Map Now</button>
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                    `;
+                    
+                    let rosterHTML = controlHTML;
+                    if (curr > 0 && sInfo.roster && sInfo.roster.length > 0) {
+                        rosterHTML += sInfo.roster.map(p => `
+                            <tr class="roster-row-${port}" style="display: ${rowDisplay}; background: rgba(0,0,0,0.25);">
+                                <td style="padding-left: 2rem; color: #a1a1aa; font-size: 0.85rem; border-bottom: none;">↳ ${p.name}</td>
+                                <td style="color: #a1a1aa; font-size: 0.85rem; border-bottom: none;">${p.frags} frags</td>
+                                <td style="color: #a1a1aa; font-size: 0.85rem; border-bottom: none;" colspan="3">[${p.type}] Skill: ${p.skill}</td>
+                                <td style="border-bottom: none;"></td>
+                            </tr>
+                        `).join('');
+                    }
+                    
+                    let expandBtn = `<button id="roster-btn-${port}" class="q-btn q-btn-secondary" style="font-size: 0.8rem; padding: 0.35rem 0.6rem; margin-right: 0.5rem;" onclick="document.querySelectorAll('.roster-row-${port}').forEach(el => el.style.display = el.style.display === 'none' ? 'table-row' : 'none')">Manage Engine ▾</button>`;
+                    
+                    html += `<tr>
+                                <td style="font-family: monospace; color: var(--q-gold);">${host}:${port}</td>
+                                <td>${sInfo.mod}</td>
+                                <td>${sInfo.map}</td>
+                                <td>
+                                    <div>${sInfo.players}</div>
+                                    <div class="capacity-container"><div class="capacity-fill" style="width: ${pct}%"></div></div>
+                                </td>
+                                <td>
+                                    <div style="font-size: 0.85rem; color: #a1a1aa; font-family: monospace;">Time Limit: ${sInfo.timelimit}<br>Frag Limit: ${sInfo.fraglimit}</div>
+                                </td>
+                                <td>
+                                    <div style="display: flex;">
+                                        ${expandBtn}
+                                        <button class="q-btn" style="font-size: 0.9rem; padding: 0.4rem 1rem;" onclick="promptConnect(${port})">Connect</button>
+                                    </div>
+                                </td>
+                             </tr>${rosterHTML}`;
+                }
+                document.getElementById('servers-table-body').innerHTML = html;
+            } catch (e) {
+                console.error(e);
+            }
+            setTimeout(fetchServers, 5000);
+        }
+
+        let currentLeaderboardTimeframe = 'all_time';
+        
+        function setLeaderboardFilter(timeframe, event) {
+            document.querySelectorAll('.lb-btn').forEach(btn => btn.classList.remove('active'));
+            if(event) event.target.classList.add('active');
+            currentLeaderboardTimeframe = timeframe;
+            fetchLeaderboard();
+        }
+
+        async function fetchLeaderboard() {
+            try {
+                const res = await fetch(`/api/leaderboard?timeframe=${currentLeaderboardTimeframe}`);
+                const data = await res.json();
+                let html = '';
+                if (data.length === 0) {
+                    html = `<tr><td colspan="8" style="text-align: center; color: var(--q-gold);">No Active Player Data Found...</td></tr>`;
+                } else {
+                    data.forEach((p, idx) => {
+                        let secs = p.play_time;
+                        let h = Math.floor(secs / 3600);
+                        let m = Math.floor((secs % 3600) / 60);
+                        let s = secs % 60;
+                        let timeStr = h > 0 ? `${h}h ${m}m` : `${m}m ${s}s`;
+                        let effStr = p.efficiency > 0 ? `${p.efficiency} f/m` : '0 f/m';
+                        
+                        html += `<tr>
+                                    <td>#${idx+1}</td>
+                                    <td>${p.name}</td>
+                                    <td>${p.frags}</td>
+                                    <td>${p.deaths}</td>
+                                    <td>${p.wins}</td>
+                                    <td style="color: var(--q-gold); font-family: monospace;">${timeStr}</td>
+                                    <td style="color: #6ee7b7; font-weight: bold;">${effStr}</td>
+                                    <td>${p.matches}</td>
+                                 </tr>`;
+                    });
+                }
+                document.getElementById('leaderboard-table-body').innerHTML = html;
+            } catch (e) {
+                console.error(e);
+            }
+            setTimeout(fetchLeaderboard, 10000);
+        }
+
+        function handleRconKey(e) {
+            if (e.key === 'Enter') sendRcon();
+        }
+
+        async function sendRcon() {
+            const port = document.getElementById('rcon-port').value;
+            const cmd = document.getElementById('rcon-cmd').value;
+            if(!port || !cmd) return logConsole("ERR: Missing Port or Command Payload");
+            
+            document.getElementById('rcon-cmd').value = '';
+            logConsole(`Injection -> [${port}]: ${cmd}`);
+            
+            try {
+                const res = await fetch('/admin/rcon', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ port: port, command: cmd })
+                });
+                if (res.status === 401) return logConsole("ERR: 401 Unauthorized!");
+                const out = await res.json();
+                if (out.status !== 'success') logConsole("ERR: " + out.message);
+                else logConsole("Engine Accepted Payload.");
+            } catch(e) { logConsole("RCON dropped."); }
+        }
+
+        async function applyLocalConfig(port) {
+            const queue = document.getElementById(`cfg-queue-${port}`).value;
+            const minp = document.getElementById(`cfg-minp-${port}`).value;
+            const bskill = document.getElementById(`cfg-skill-${port}`).value;
+            const f_limit = document.getElementById(`cfg-frag-${port}`).value;
+            const t_limit = document.getElementById(`cfg-time-${port}`).value;
+            
+            const btn = event.target;
+            const oldText = btn.innerText;
+            btn.innerText = "Applying...";
+            
+            try {
+                const res = await fetch('/admin/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        port: port,
+                        map_queue: queue, 
+                        minplayers: minp,
+                        bot_skill1: bskill,
+                        fraglimit: f_limit,
+                        timelimit: t_limit
+                    })
+                });
+                if (res.status === 401) {
+                    document.getElementById(`cfg-status-${port}`).innerText = "Unauthorized!";
+                } else {
+                    const out = await res.json();
+                    document.getElementById(`cfg-status-${port}`).innerText = out.message;
+                    fetchServers();
+                }
+            } catch(e) {
+                document.getElementById(`cfg-status-${port}`).innerText = "Failed connection.";
+            }
+            btn.innerText = oldText;
+            setTimeout(() => { if(document.getElementById(`cfg-status-${port}`)) document.getElementById(`cfg-status-${port}`).innerText = ''; }, 3000);
+        }
+
+        async function nextMap(port) {
+            const btn = event.target;
+            const oldText = btn.innerText;
+            btn.innerText = "Rotating...";
+            try {
+                const response = await fetch('/admin/nextmap', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({port: port})
+                });
+                const res = await response.json();
+                if (res.status === 'success') {
+                    if(document.getElementById(`cfg-status-${port}`)) document.getElementById(`cfg-status-${port}`).innerText = "Map Formally Rotated!";
+                    setTimeout(fetchServers, 1000);
+                } else {
+                    if(document.getElementById(`cfg-status-${port}`)) document.getElementById(`cfg-status-${port}`).innerText = res.message;
+                }
+            } catch (err) {
+                if(document.getElementById(`cfg-status-${port}`)) document.getElementById(`cfg-status-${port}`).innerText = "Rotation network failure.";
+            }
+            btn.innerText = oldText;
+            setTimeout(() => { if(document.getElementById(`cfg-status-${port}`)) document.getElementById(`cfg-status-${port}`).innerText = ''; }, 3000);
+        }
+
+        async function spawnServer() {
+            const map = document.getElementById('admin-map').value;
+            logConsole(`Requesting local orchestration: map=${map}...`);
+            try {
+                const res = await fetch('/admin/launch-server', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ map_name: map, mod: "ktx" })
+                });
+                if (res.status === 401) return logConsole("ERR: 401 Unauthorized!");
+                const out = await res.json();
+                if (out.status === 'success') {
+                    logConsole(`Active Sub-Server: Port ${out.port} [PID: ${out.pid}]`);
+                    fetchServers();
+                } else logConsole("ERR: " + out.message);
+            } catch(e) { logConsole("Connection dropped."); }
+        }
+
+        async function fetchAsset() {
+            const url = document.getElementById('admin-url').value;
+            if (!url) return logConsole("ERR: Missing Target Asset URL");
+            logConsole(`Ingesting payload from ${url}...`);
+            try {
+                const res = await fetch('/admin/fetch-asset', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url: url })
+                });
+                if (res.status === 401) return logConsole("ERR: Admin Permissions Blocked!");
+                const out = await res.json();
+                if (out.status === 'success') logConsole("ASSET EXTRACTED TO VOLUME!");
+                else logConsole("ERR: " + out.message);
+            } catch(e) { logConsole("Asset ingestion dropped."); }
+        }
+    </script>
+</body>
+</html>

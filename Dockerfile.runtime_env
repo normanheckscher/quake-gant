@@ -1,0 +1,21 @@
+# Dockerfile.runtime_env
+# Abstracted structural baseline caching maps and system modules independently
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y \
+    libpcre3 python3 python3-pip supervisor wget unzip libcurl4 && \
+    rm -rf /var/lib/apt/lists/*
+
+# Pre-download Map Archives natively to decouple heavy asset caching
+RUN mkdir -p /quake/qw/maps /quake/qw/help /tmp/maps && \
+    wget -qO /tmp/maps.zip https://github.com/nQuake/server-linux/archive/refs/heads/master.zip && \
+    unzip -q -j /tmp/maps.zip 'server-linux-master/qw/maps/*.bsp' -d /quake/qw/maps/ || true && \
+    rm -f /tmp/maps.zip
+
+# Pre-Install python SDK architecture requirements statically
+COPY web/requirements.txt /tmp/
+RUN pip3 install --no-cache-dir --break-system-packages -r /tmp/requirements.txt
+
+# Create standard volume layouts
+RUN mkdir -p /quake/id1 /quake/qw /web
+WORKDIR /quake
