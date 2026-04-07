@@ -1,0 +1,1 @@
+/usr/bin/cc -march=skylake-avx512 -O3 -mstackrealign -fno-strict-aliasing -O3 -DNDEBUG CMakeFiles/q3asm.dir/q3asm.c.o CMakeFiles/q3asm.dir/q3vm.c.o CMakeFiles/q3asm.dir/cmdlib.c.o -o q3asm 

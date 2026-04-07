@@ -42,7 +42,9 @@ To bootstrap this deployment pipeline on a new GitLab instance, navigate to **Se
 *   **`DOCKERHUB_TOKEN`**: A secure Personal Access Token granting pull/push pipeline accessibility.
 
 ### GitHub Release Integrations
-*   **`GITHUB_TOKEN`**: A GitHub Personal Access Token mapped with "repo" access. The pipeline uses this to seamlessly mint automated GitHub Releases and push the raw cross-compiled `mvdsv-standard`, `mvdsv-avx512`, and `qwprogs.so` binaries upstream into `normanheckscher/quake-gant`.
+*   **`GITHUB_USERNAME`**: Your pure GitHub Developer username (e.g., `normanheckscher`). This dynamically abstracts the pipeline targets avoiding hardcoded URLs natively!
+*   **`GITHUB_REPO`**: The target repository slug natively tracking the CI payload (e.g., `quake-gant`).
+*   **`GITHUB_TOKEN`**: A GitHub Personal Access Token natively mapped with "repo" boundary access. The pipeline rigorously consumes this organically to mint mathematical GitHub Releases mapping raw cross-compiled `mvdsv-standard` and `mvdsv-avx512` engines.
 
 ## 3. Runner Target Characteristics
 

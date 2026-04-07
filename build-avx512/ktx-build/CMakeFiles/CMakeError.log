@@ -1,0 +1,16 @@
+Performing C SOURCE FILE Test HAS_STRLCPY_STRLCAT_SIZE failed with the following output:
+Change Dir: /builds/norman/quake-antigravity/build-avx512/ktx-build/CMakeFiles/CMakeScratch/TryCompile-gMwAZT
+
+Run Build Command(s):/usr/bin/gmake -f Makefile cmTC_54a31/fast && /usr/bin/gmake  -f CMakeFiles/cmTC_54a31.dir/build.make CMakeFiles/cmTC_54a31.dir/build
+gmake[1]: Entering directory '/builds/norman/quake-antigravity/build-avx512/ktx-build/CMakeFiles/CMakeScratch/TryCompile-gMwAZT'
+Building C object CMakeFiles/cmTC_54a31.dir/src.c.o
+/usr/bin/cc -DHAS_STRLCPY_STRLCAT_SIZE  -march=skylake-avx512 -O3 -mstackrealign -fno-strict-aliasing    -Wstrlcpy-strlcat-size -o CMakeFiles/cmTC_54a31.dir/src.c.o -c /builds/norman/quake-antigravity/build-avx512/ktx-build/CMakeFiles/CMakeScratch/TryCompile-gMwAZT/src.c
+cc: error: unrecognized command-line option '-Wstrlcpy-strlcat-size'
+gmake[1]: *** [CMakeFiles/cmTC_54a31.dir/build.make:78: CMakeFiles/cmTC_54a31.dir/src.c.o] Error 1
+gmake[1]: Leaving directory '/builds/norman/quake-antigravity/build-avx512/ktx-build/CMakeFiles/CMakeScratch/TryCompile-gMwAZT'
+gmake: *** [Makefile:127: cmTC_54a31/fast] Error 2
+
+
+Source file was:
+int main(void) { return 0; }
+

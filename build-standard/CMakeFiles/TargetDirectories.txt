@@ -1,0 +1,3 @@
+/builds/norman/quake-antigravity/build-standard/CMakeFiles/mvdsv.dir
+/builds/norman/quake-antigravity/build-standard/CMakeFiles/edit_cache.dir
+/builds/norman/quake-antigravity/build-standard/CMakeFiles/rebuild_cache.dir
